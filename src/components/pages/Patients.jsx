@@ -76,7 +76,7 @@ export default function Patients() {
   // --- Fetch Data ---
   const fetchPatients = () => {
     setLoading(true);
-    axios.get('http://localhost:3001/patients')
+    axios.get('https://mon-api-rmv3.onrender.com/patients')
       .then(res => setPatients(res.data))
       .catch(() => {
         handleError("Impossible de charger la liste des patients (Vérifiez votre serveur API).");
@@ -91,7 +91,7 @@ export default function Patients() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const url = `http://localhost:3001/patients${isEditing ? '/' + formData.cinPatient : ''}`;
+    const url = `https://mon-api-rmv3.onrender.com/patients${isEditing ? '/' + formData.cinPatient : ''}`;
     const method = isEditing ? 'put' : 'post';
     const ageNum = Number(formData.age);
 
@@ -171,7 +171,7 @@ export default function Patients() {
 
   const handleDelete = (cin) => {
     if (window.confirm("CONFIRMATION : Voulez-vous vraiment supprimer définitivement ce dossier patient ?")) {
-      axios.delete(`https://mon-api.onrender.com/patients/${cin}`)
+      axios.delete(`https://mon-api-rmv3.onrender.com/patients/${cin}`)
         .then(() => {
           fetchPatients();
           handleSuccess("Dossier patient supprimé.");

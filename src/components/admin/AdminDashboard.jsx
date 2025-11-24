@@ -14,8 +14,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     // Utiliser un `Promise.all` pour charger les deux en même temps
     Promise.all([
-      axios.get('http://localhost:3001/admins'),
-      axios.get('http://localhost:3001/users')
+      axios.get('https://mon-api-rmv3.onrender.com/admins'),
+      axios.get('https://mon-api-rmv3.onrender.com/users')
     ])
     .then(([adminsRes, usersRes]) => {
       setAdmins(adminsRes.data);
@@ -40,7 +40,7 @@ const AdminDashboard = () => {
     } 
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet Administrateur ?")) return;
     try {
-      await axios.delete(`http://localhost:3001/admins/${id}`);
+      await axios.delete(`https://mon-api-rmv3.onrender.com/admins/${id}`);
       setAdmins(admins.filter(a => a.id !== id));
       setMessage("🗑️ Administrateur supprimé avec succès !");
       setTimeout(() => setMessage(''), 3000);
@@ -54,7 +54,7 @@ const AdminDashboard = () => {
   const handleDeleteUser = async (id) => {
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet Utilisateur ?")) return;
     try {
-      await axios.delete(`http://localhost:3001/users/${id}`);
+      await axios.delete(`https://mon-api-rmv3.onrender.com/users/${id}`);
       setUsers(users.filter(u => u.id !== id));
       setMessage("🗑️ Utilisateur supprimé avec succès !");
       setTimeout(() => setMessage(''), 3000);

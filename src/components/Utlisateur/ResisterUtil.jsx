@@ -27,7 +27,7 @@ const ResisterUtil = () => {
     setLoading(true);
     try {
       // Assurez-vous que cette URL est correcte pour votre backend
-      const res = await axios.post('http://localhost:3001/register', { 
+      const res = await axios.post('https://mon-api-rmv3.onrender.com/register', { 
         email: form.email,
         password: form.password,
       });

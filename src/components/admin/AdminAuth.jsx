@@ -29,7 +29,7 @@ const AdminAuth = () => {
     }
 
     try {
-      const res = await axios.post('http://localhost:3001/admins/login', form);
+      const res = await axios.post('https://mon-api-rmv3.onrender.com/admins/login', form);
       
       setLoading(false);
       if (res.status === 200) {

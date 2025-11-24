@@ -64,7 +64,7 @@ const AdminForm = ({ adminToEdit, onAdminUpdated, onAdminAdded, adminsCount }) =
     if (adminToEdit && !formData.password) {
         // Envoi des données sans le mot de passe
         try {
-            await axios.put(`http://localhost:3001/admins/${adminToEdit.id}`, dataToSend);
+            await axios.put(`https://mon-api-rmv3.onrender.com/admins/${adminToEdit.id}`, dataToSend);
             setSuccess("Administrateur modifié avec succès (Email mis à jour) !");
             onAdminUpdated();
         } catch (error) {
@@ -76,12 +76,12 @@ const AdminForm = ({ adminToEdit, onAdminUpdated, onAdminAdded, adminsCount }) =
     // Si on ajoute ou on modifie avec un nouveau mot de passe
     try {
       if (adminToEdit) {
-        await axios.put(`http://localhost:3001/admins/${adminToEdit.id}`, dataToSend);
+        await axios.put(`https://mon-api-rmv3.onrender.com/admins/${adminToEdit.id}`, dataToSend);
         setSuccess("Administrateur modifié avec succès !");
         onAdminUpdated();
       } else {
         // Ajout
-        await axios.post('http://localhost:3001/admins', dataToSend);
+        await axios.post('https://mon-api-rmv3.onrender.com/admins', dataToSend);
         setSuccess("Administrateur ajouté avec succès !");
         onAdminAdded();
       }
