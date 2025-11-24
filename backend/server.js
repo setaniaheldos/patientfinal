@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Connexion à PostgreSQL via Render (utilisez DATABASE_URL en env var)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://test_a089_user:9zXW2HdJEC7N3MwoAf7v5ZGCIxqDTZXD@dpg-d4i78undiees73c0lvl0-a.oregon-postgres.render.com/test_a089',
+  connectionString: process.env.DATABASE_URL || 'postgresql://test_71t6_user:ekID6Kefxqj3AdoapJTAW36DvKDXHjIx@dpg-d4i8doali9vc73el25a0-a.oregon-postgres.render.com/test_71t6',
   ssl: { rejectUnauthorized: false } // Nécessaire pour Render
 });
 
@@ -36,25 +36,31 @@ async function query(sql, params = []) {
   }
 }
 
-// 🔧 Création des tables (Syntaxe PostgreSQL: SERIAL pour auto-incrément, TEXT/NUMERIC pour types)
+// 🔧 Création des tables (Mise à jour pour Praticiens et Rendez-vous)
 async function createTables() {
   try {
     
-    // ⚠️ D'abord, tenter de supprimer l'ancienne colonne si elle existe, pour éviter les erreurs futures.
-    // Cette opération est critique car la colonne pourrait encore exister dans la base de données.
+    // ⚠️ Suppression des anciennes colonnes pour une migration propre
     try {
         await query("ALTER TABLE patients DROP COLUMN IF EXISTS cinPatient");
         console.log('✅ Tentative de suppression de l\'ancienne colonne cinPatient réussie.');
     } catch (alterErr) {
-        // En cas d'échec (par exemple, si la colonne est encore référencée, ce qui ne devrait pas être le cas ici)
         console.error("⚠️ Impossible de supprimer l'ancienne colonne cinPatient:", alterErr.message);
     }
+
+    // NOUVEAU: Suppression des colonnes obsolètes dans Praticiens et Rendezvous
+    try {
+        await query("ALTER TABLE praticiens DROP COLUMN IF EXISTS cinPraticien");
+        await query("ALTER TABLE rendezvous DROP COLUMN IF EXISTS cinPraticien");
+        console.log('✅ Tentative de suppression de cinPraticien réussie.');
+    } catch (alterErr) {
+        console.error("⚠️ Impossible de supprimer une ancienne colonne cinPraticien (si elle était référencée):", alterErr.message);
+    }
       
-    // Table patients
+    // Table patients (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS patients (
         id SERIAL PRIMARY KEY,
-        -- cinPatient TEXT UNIQUE NOT NULL (SUPPRIMÉ SELON LA DEMANDE)
         prenom TEXT NOT NULL,
         nom TEXT NOT NULL,
         age INTEGER NOT NULL,
@@ -65,10 +71,10 @@ async function createTables() {
       );
     `);
 
-    // Table praticiens (inchangée)
+    // Table praticiens (MODIFIÉE : Utilise id SERIAL PRIMARY KEY au lieu de cinPraticien)
     await query(`
       CREATE TABLE IF NOT EXISTS praticiens (
-        cinPraticien TEXT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         nom TEXT NOT NULL,
         prenom TEXT NOT NULL,
         telephone TEXT UNIQUE,
@@ -77,17 +83,17 @@ async function createTables() {
       );
     `);
 
-    // Table rendezvous (inchangée dans sa structure de clé)
+    // Table rendezvous (MODIFIÉE : Utilise praticien_id INTEGER REFERENCES praticiens(id))
     await query(`
       CREATE TABLE IF NOT EXISTS rendezvous (
         idRdv SERIAL PRIMARY KEY,
         patient_id INTEGER NOT NULL,
-        cinPraticien TEXT NOT NULL,
+        praticien_id INTEGER NOT NULL,
         dateHeure TIMESTAMP NOT NULL,
         statut TEXT DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'confirme', 'annule')),
         idRdvParent INTEGER,
         FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
-        FOREIGN KEY (cinPraticien) REFERENCES praticiens(cinPraticien) ON DELETE CASCADE,
+        FOREIGN KEY (praticien_id) REFERENCES praticiens(id) ON DELETE CASCADE,
         FOREIGN KEY (idRdvParent) REFERENCES rendezvous(idRdv)
       );
     `);
@@ -166,7 +172,7 @@ async function createTables() {
 // Exécuter la création des tables
 createTables();
 
-// --- 2. ROUTES CRUD PATIENTS ---
+// --- 2. ROUTES CRUD PATIENTS (INCHANGÉES) ---
 
 // Route GET : Lister les patients (Recherche par nom)
 app.get('/patients', async (req, res) => {
@@ -176,7 +182,6 @@ app.get('/patients', async (req, res) => {
     const params = [];
 
     if (nom) {
-      // Utilisation de ILIKE pour la recherche insensible à la casse dans PostgreSQL
       sql += ' AND LOWER(nom) LIKE $1';
       params.push(`%${nom.toLowerCase()}%`);
     }
@@ -188,7 +193,7 @@ app.get('/patients', async (req, res) => {
   }
 });
 
-// Route GET : Obtenir un patient par ID (NOUVELLE ROUTE)
+// Route GET : Obtenir un patient par ID
 app.get('/patients/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -204,27 +209,23 @@ app.get('/patients/:id', async (req, res) => {
 // Route POST : Ajouter un patient
 app.post('/patients', async (req, res) => {
   try {
-    // Suppression de cinPatient dans le destructuring
     const { prenom, nom, age, adresse, email, sexe, telephone } = req.body; 
     const sql = `
       INSERT INTO patients (prenom, nom, age, adresse, email, sexe, telephone) 
       VALUES ($1, $2, $3, $4, $5, $6, $7) 
       RETURNING id
     `;
-    // Suppression de cinPatient dans les paramètres
     const result = await query(sql, [prenom, nom, age, adresse, email, sexe, telephone]); 
-    // RETURNING id donne l'ID auto-généré
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Route PUT : Modifier un patient par ID (Anciennement par CIN)
+// Route PUT : Modifier un patient par ID
 app.put('/patients/:id', async (req, res) => {
   try {
     const { prenom, nom, age, adresse, email, sexe, telephone } = req.body;
-    // Changement du paramètre :cinPatient en :id
     const { id } = req.params; 
     const sql = `
       UPDATE patients 
@@ -232,7 +233,6 @@ app.put('/patients/:id', async (req, res) => {
       WHERE id=$8 
       RETURNING *
     `;
-    // Changement de la position des paramètres (l'ID est le dernier)
     const result = await query(sql, [prenom, nom, age, adresse, email, sexe, telephone, id]); 
     if (result.rowCount === 0) return res.status(404).json({ error: "Patient non trouvé" });
     res.json({ modified: result.rowCount });
@@ -241,10 +241,9 @@ app.put('/patients/:id', async (req, res) => {
   }
 });
 
-// Route DELETE : Supprimer un patient par ID (Anciennement par CIN)
+// Route DELETE : Supprimer un patient par ID
 app.delete('/patients/:id', async (req, res) => {
   try {
-    // Changement de req.params.cinPatient en req.params.id
     const result = await query(`DELETE FROM patients WHERE id=$1`, [req.params.id]); 
     if (result.rowCount === 0) return res.status(404).json({ error: "Patient non trouvé" });
     res.json({ deleted: result.rowCount });
@@ -261,11 +260,10 @@ app.post('/register', async (req, res) => {
     const { email, password } = req.body;
     const hashed = await bcrypt.hash(password, 10);
     
-    // Le conflit UNIQUE sera géré par l'erreur 23505
     await query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashed]);
     res.json({ message: 'Compte créé. En attente de validation par un administrateur.' });
   } catch (err) {
-    if (err.code === '23505') { // Code d'erreur PostgreSQL pour violation de contrainte unique
+    if (err.code === '23505') { 
       res.status(400).json({ error: 'Utilisateur déjà existant' });
     } else {
       res.status(500).json({ error: err.message });
@@ -285,7 +283,6 @@ app.post('/login', async (req, res) => {
 
     const match = await bcrypt.compare(password, user.password);
     if (match) {
-      // Note: Vous devrez implémenter un JWT ou un jeton de session ici pour une API sécurisée
       const { password: _, ...safeUser } = user;
       res.json({ message: 'Connexion réussie', user: safeUser });
     } else {
@@ -357,10 +354,9 @@ app.get('/users', async (req, res) => {
   }
 });
 
-// NOUVELLE ROUTE : Lister les utilisateurs en attente de validation (isApproved = 0)
+// Route GET : Lister les utilisateurs en attente de validation (isApproved = 0)
 app.get('/users/pending', async (req, res) => {
   try {
-    // La requête SQL filtre spécifiquement les utilisateurs dont isApproved est à 0
     const result = await query('SELECT id, email, isApproved FROM users WHERE isApproved = 0');
     res.json(result.rows);
   } catch (err) {
@@ -406,7 +402,7 @@ app.delete('/users/:id', async (req, res) => {
   }
 });
 
-// --- 4. ROUTES PRATICIENS (INCHANGÉES) ---
+// --- 4. ROUTES PRATICIENS (MODIFIÉES : Utilisation de l'ID) ---
 
 // Route GET : Lister tous les praticiens
 app.get('/praticiens', async (req, res) => {
@@ -418,25 +414,38 @@ app.get('/praticiens', async (req, res) => {
   }
 });
 
-// Route POST : Ajouter un praticien
+// Route GET : Obtenir un praticien par ID (AJOUTÉE)
+app.get('/praticiens/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await query('SELECT * FROM praticiens WHERE id = $1', [id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: "Praticien non trouvé" });
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// Route POST : Ajouter un praticien (cinPraticien retiré)
 app.post('/praticiens', async (req, res) => {
   try {
-    const { cinPraticien, nom, prenom, telephone, email, specialite } = req.body;
-    const sql = `INSERT INTO praticiens (cinPraticien, nom, prenom, telephone, email, specialite) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
-    await query(sql, [cinPraticien, nom, prenom, telephone, email, specialite]);
-    res.status(201).json({ message: 'Praticien ajouté' });
+    const { nom, prenom, telephone, email, specialite } = req.body;
+    const sql = `INSERT INTO praticiens (nom, prenom, telephone, email, specialite) VALUES ($1, $2, $3, $4, $5) RETURNING id`;
+    const result = await query(sql, [nom, prenom, telephone, email, specialite]);
+    res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Route PUT : Modifier un praticien
-app.put('/praticiens/:cinPraticien', async (req, res) => {
+// Route PUT : Modifier un praticien (Utilise :id au lieu de :cinPraticien)
+app.put('/praticiens/:id', async (req, res) => {
   try {
     const { nom, prenom, telephone, email, specialite } = req.body;
-    const { cinPraticien } = req.params;
-    const sql = `UPDATE praticiens SET nom=$1, prenom=$2, telephone=$3, email=$4, specialite=$5 WHERE cinPraticien=$6 RETURNING *`;
-    const result = await query(sql, [nom, prenom, telephone, email, specialite, cinPraticien]);
+    const { id } = req.params;
+    const sql = `UPDATE praticiens SET nom=$1, prenom=$2, telephone=$3, email=$4, specialite=$5 WHERE id=$6 RETURNING *`;
+    const result = await query(sql, [nom, prenom, telephone, email, specialite, id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "Praticien non trouvé" });
     res.status(200).json({ message: 'Praticien mis à jour' });
   } catch (err) {
@@ -444,10 +453,10 @@ app.put('/praticiens/:cinPraticien', async (req, res) => {
   }
 });
 
-// Route DELETE : Supprimer un praticien
-app.delete('/praticiens/:cinPraticien', async (req, res) => {
+// Route DELETE : Supprimer un praticien (Utilise :id au lieu de :cinPraticien)
+app.delete('/praticiens/:id', async (req, res) => {
   try {
-    const result = await query(`DELETE FROM praticiens WHERE cinPraticien = $1`, [req.params.cinPraticien]);
+    const result = await query(`DELETE FROM praticiens WHERE id = $1`, [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "Praticien non trouvé" });
     res.status(200).json({ message: 'Praticien supprimé' });
   } catch (err) {
@@ -455,17 +464,17 @@ app.delete('/praticiens/:cinPraticien', async (req, res) => {
   }
 });
 
-// --- 5. ROUTES RENDEZ-VOUS (INCHANGÉES) ---
+// --- 5. ROUTES RENDEZ-VOUS (MODIFIÉES : Utilisation de praticien_id) ---
 
 // Route GET : Tous les rendez-vous
 app.get('/rendezvous', async (req, res) => {
   try {
-    // Jointure pour afficher les détails du patient et du praticien
+    // Jointure mise à jour pour utiliser praticien_id
     const result = await query(`
       SELECT r.*, p.nom as patient_nom, p.prenom as patient_prenom, pr.nom as praticien_nom, pr.prenom as praticien_prenom
       FROM rendezvous r
       JOIN patients p ON r.patient_id = p.id
-      JOIN praticiens pr ON r.cinPraticien = pr.cinPraticien
+      JOIN praticiens pr ON r.praticien_id = pr.id
     `);
     res.json(result.rows);
   } catch (err) {
@@ -473,14 +482,14 @@ app.get('/rendezvous', async (req, res) => {
   }
 });
 
-// Route POST : Créer un rendez-vous
+// Route POST : Créer un rendez-vous (utilise praticien_id)
 app.post('/rendezvous', async (req, res) => {
   try {
-    const { patient_id, cinPraticien, dateHeure, statut = 'en_attente', idRdvParent = null } = req.body;
+    const { patient_id, praticien_id, dateHeure, statut = 'en_attente', idRdvParent = null } = req.body;
     const result = await query(
-      `INSERT INTO rendezvous (patient_id, cinPraticien, dateHeure, statut, idRdvParent)
+      `INSERT INTO rendezvous (patient_id, praticien_id, dateHeure, statut, idRdvParent)
        VALUES ($1, $2, $3, $4, $5) RETURNING idRdv`,
-      [patient_id, cinPraticien, dateHeure, statut, idRdvParent]
+      [patient_id, praticien_id, dateHeure, statut, idRdvParent]
     );
     res.json({ id: result.rows[0].idRdv });
   } catch (err) {
@@ -488,25 +497,25 @@ app.post('/rendezvous', async (req, res) => {
   }
 });
 
-// Route PUT : Modifier un rendez-vous (et créer une consultation si confirmé)
+// Route PUT : Modifier un rendez-vous (utilise praticien_id)
 app.put('/rendezvous/:idRdv', async (req, res) => {
   const client = await pool.connect(); 
   try {
     await client.query('BEGIN');
     
-    const { patient_id, cinPraticien, dateHeure, statut, idRdvParent } = req.body;
+    const { patient_id, praticien_id, dateHeure, statut, idRdvParent } = req.body;
     const idRdv = req.params.idRdv;
 
     // Mise à jour du rendez-vous
     const updateResult = await client.query(
       `UPDATE rendezvous 
        SET patient_id=COALESCE($1, patient_id), 
-           cinPraticien=COALESCE($2, cinPraticien), 
+           praticien_id=COALESCE($2, praticien_id), 
            dateHeure=COALESCE($3, dateHeure), 
            statut=COALESCE($4, statut), 
            idRdvParent=COALESCE($5, idRdvParent) 
        WHERE idRdv=$6 RETURNING *`,
-      [patient_id, cinPraticien, dateHeure, statut, idRdvParent, idRdv]
+      [patient_id, praticien_id, dateHeure, statut, idRdvParent, idRdv]
     );
 
     if (updateResult.rowCount === 0) {
@@ -535,7 +544,7 @@ app.put('/rendezvous/:idRdv', async (req, res) => {
   }
 });
 
-// Route DELETE : Supprimer un rendez-vous
+// Route DELETE : Supprimer un rendez-vous (inchangée)
 app.delete('/rendezvous/:idRdv', async (req, res) => {
   try {
     const result = await query(`DELETE FROM rendezvous WHERE idRdv = $1`, [req.params.idRdv]);
@@ -546,7 +555,7 @@ app.delete('/rendezvous/:idRdv', async (req, res) => {
   }
 });
 
-// --- 6. ROUTES CONSULTATIONS (INCHANGÉES) ---
+// --- 6. ROUTES CONSULTATIONS (MODIFIÉES : Mise à jour de la recherche avancée) ---
 
 // Route GET : Lister toutes les consultations
 app.get('/consultations', async (req, res) => {
@@ -602,7 +611,7 @@ app.delete('/consultations/:idConsult', async (req, res) => {
   }
 });
 
-// Route GET : Recherche avancée
+// Route GET : Recherche avancée (Mise à jour pour utiliser praticien.id)
 app.get('/consultations/search', async (req, res) => {
   try {
     const { patient, praticien, date, compteRendu } = req.query;
@@ -611,7 +620,7 @@ app.get('/consultations/search', async (req, res) => {
       SELECT c.*, p.nom as patient_nom, pr.nom as praticien_nom FROM consultations c
       LEFT JOIN rendezvous r ON c.idRdv = r.idRdv
       LEFT JOIN patients p ON r.patient_id = p.id
-      LEFT JOIN praticiens pr ON r.cinPraticien = pr.cinPraticien
+      LEFT JOIN praticiens pr ON r.praticien_id = pr.id -- CHANGEMENT ICI
       WHERE 1=1
     `;
     const params = [];

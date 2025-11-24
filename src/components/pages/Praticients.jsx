@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import jsPDF from "jspdf"; // Ajouté
-import "jspdf-autotable"; // Ajouté
+import jsPDF from "jspdf"; 
+import "jspdf-autotable"; 
 import * as XLSX from "xlsx";
 import { UserPlus, Search, Edit2, Trash2, FileSpreadsheet, ChevronUp, ChevronDown, RefreshCw, X, Check, Clock, User, Phone, Mail, FileText, Stethoscope } from 'lucide-react';
 
@@ -16,13 +16,12 @@ const SPECIALITES_LIST = [
     { value: 'Orthopedie', label: 'Orthopédie' },
     { value: 'Radiologie', label: 'Radiologie' },
     { value: 'Ophtalmologie', label: 'Ophtalmologie' },
-    // Ajoutez d'autres spécialités selon vos besoins
 ];
 
 export default function Praticiens() {
   const [praticiens, setPraticiens] = useState([]);
   const [formData, setFormData] = useState({
-    cinPraticien: '',
+    id: null, // MODIFIÉ : Ajout de 'id' pour l'édition/suppression
     nom: '',
     prenom: '',
     telephone: '',
@@ -35,9 +34,12 @@ export default function Praticiens() {
   const [sortField, setSortField] = useState('nom');
   const [sortOrder, setSortOrder] = useState('asc');
   const [page, setPage] = useState(1);
-  const [perPage] = useState(8); // Augmenté pour la densité
+  const [perPage] = useState(8); 
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
   const [loading, setLoading] = useState(false);
+  
+  // URL de base de l'API (à adapter si nécessaire)
+  const API_BASE_URL = 'https://mon-api-rmv3.onrender.com';
 
   // --- Gestion des Notifications ---
   const handleNotification = (msg, type) => {
@@ -51,7 +53,7 @@ export default function Praticiens() {
   // --- Fetch Data ---
   const fetchPraticiens = () => {
     setLoading(true);
-    axios.get('https://mon-api-rmv3.onrender.com/praticiens')
+    axios.get(`${API_BASE_URL}/praticiens`)
       .then(res => setPraticiens(res.data))
       .catch(() => handleError("Impossible de charger la liste des praticiens."))
       .finally(() => setLoading(false));
@@ -67,40 +69,46 @@ export default function Praticiens() {
   };
 
   const handleAddClick = () => {
-    setFormData({ cinPraticien: '', nom: '', prenom: '', telephone: '', email: '', specialite: '' });
+    // MODIFIÉ : Initialisation sans cinPraticien
+    setFormData({ id: null, nom: '', prenom: '', telephone: '', email: '', specialite: '' }); 
     setIsEditing(false);
     setShowForm(!showForm);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const method = isEditing ? 'put' : 'post';
-    const url = `https://mon-api-rmv3.onrender.com/praticiens${isEditing ? '/' + formData.cinPraticien : ''}`;
+    const { id, ...dataToSend } = formData; // MODIFIÉ : id n'est pas envoyé en POST, mais est requis en PUT
     
-    // Validation CIN en mode ajout
-    if (!isEditing && !formData.cinPraticien) {
-        handleError("Le CIN est requis pour l'ajout d'un nouveau praticien.");
-        return;
-    }
-
-    axios[method](url, formData)
+    const method = isEditing ? 'put' : 'post';
+    // MODIFIÉ : Utilisation de formData.id pour l'URL en mode édition
+    const url = `${API_BASE_URL}/praticiens${isEditing ? '/' + id : ''}`; 
+    
+    axios[method](url, dataToSend)
       .then(() => {
         fetchPraticiens();
-        setFormData({ cinPraticien: '', nom: '', prenom: '', telephone: '', email: '', specialite: '' });
+        // MODIFIÉ : Réinitialisation sans cinPraticien
+        setFormData({ id: null, nom: '', prenom: '', telephone: '', email: '', specialite: '' }); 
         setIsEditing(false);
         setShowForm(false);
         handleSuccess(isEditing ? "Dossier praticien mis à jour." : "Nouveau praticien enregistré.");
       })
       .catch((err) => {
-        const errorMsg = err.response?.data?.message || `Erreur de ${isEditing ? 'mise à jour' : "création"}. CIN peut être déjà utilisé.`;
+        // Le message d'erreur est souvent lié aux contraintes UNIQUE (email, telephone)
+        const errorMsg = err.response?.data?.error || `Erreur de ${isEditing ? 'mise à jour' : "création"}. Vérifiez les champs uniques (Email, Téléphone).`;
         handleError(errorMsg);
       });
   };
 
   const handleEdit = (p) => {
-    // Cloner l'objet patient pour éviter la modification directe de l'état du tableau
-    const praticienClone = { ...p };
-    setFormData(praticienClone);
+    // MODIFIÉ : L'objet 'p' contient maintenant 'id'
+    setFormData({ 
+        id: p.id, 
+        nom: p.nom, 
+        prenom: p.prenom, 
+        telephone: p.telephone, 
+        email: p.email, 
+        specialite: p.specialite
+    });
     setIsEditing(true);
     setShowForm(true);
   };
@@ -108,13 +116,15 @@ export default function Praticiens() {
   const handleCancel = () => {
     setShowForm(false);
     setIsEditing(false);
-    setFormData({ cinPraticien: '', nom: '', prenom: '', telephone: '', email: '', specialite: '' });
+    // MODIFIÉ : Réinitialisation sans cinPraticien
+    setFormData({ id: null, nom: '', prenom: '', telephone: '', email: '', specialite: '' }); 
   };
 
 
-  const handleDelete = (cinPraticien) => {
+  const handleDelete = (id) => { // MODIFIÉ : Prend 'id' au lieu de 'cinPraticien'
     if (window.confirm("CONFIRMATION : Voulez-vous vraiment supprimer définitivement ce dossier praticien ?")) {
-      axios.delete(`https://mon-api-rmv3.onrender.com/praticiens/${cinPraticien}`)
+      // MODIFIÉ : Utilisation de l'ID dans l'URL
+      axios.delete(`${API_BASE_URL}/praticiens/${id}`) 
         .then(() => {
           fetchPraticiens();
           handleSuccess("Dossier praticien supprimé.");
@@ -159,8 +169,9 @@ export default function Praticiens() {
   const paginatedPraticiens = filteredPraticiens.slice((page - 1) * perPage, page * perPage);
 
   // --- Export Functions ---
-  const getExportData = () => filteredPraticiens.map(({ cinPraticien, nom, prenom, telephone, email, specialite }) => ({
-    CIN: cinPraticien,
+  // MODIFIÉ : Suppression de cinPraticien du mapping
+  const getExportData = () => filteredPraticiens.map(({ id, nom, prenom, telephone, email, specialite }) => ({
+    ID: id,
     Nom: nom,
     Prénom: prenom,
     Téléphone: telephone,
@@ -172,14 +183,15 @@ export default function Praticiens() {
   const handlePrintPDF = () => {
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.setTextColor(33, 150, 243); // Bleu Primaire
+    doc.setTextColor(33, 150, 243); 
     doc.text("Rapport Praticiens MedTech", 14, 15);
     doc.autoTable({
-      head: [["CIN", "Nom", "Prénom", "Téléphone", "Email", "Spécialité"]],
+      // MODIFIÉ : En-tête de la table PDF
+      head: [["ID", "Nom", "Prénom", "Téléphone", "Email", "Spécialité"]], 
       body: getExportData().map(d => Object.values(d)),
       startY: 25,
       styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
-      headStyles: { fillColor: [33, 150, 243], textColor: [255, 255, 255], fontStyle: 'bold' }, // Bleu Vif pour l'en-tête
+      headStyles: { fillColor: [33, 150, 243], textColor: [255, 255, 255], fontStyle: 'bold' }, 
       alternateRowStyles: { fillColor: [245, 245, 255] },
       margin: { top: 20 }
     });
@@ -308,16 +320,14 @@ export default function Praticiens() {
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-2xl mb-8 space-y-6 border border-indigo-200 animate-fade-in-up">
           <h3 className="text-2xl font-bold text-indigo-700 flex items-center gap-2">
             {isEditing ? <Edit2 className='w-6 h-6' /> : <UserPlus className='w-6 h-6' />}
-            {isEditing ? 'Modification du Dossier Praticien' : 'Enregistrement d\'un Nouveau Praticien'}
+            {isEditing ? `Modification du Dossier Praticien (ID: ${formData.id})` : 'Enregistrement d\'un Nouveau Praticien'}
           </h3>
           <p className='text-sm text-gray-500'>* Champs obligatoires</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
-            <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center"><User className='w-4 h-4 mr-1 text-blue-500' /> CIN*</label>
-                <input className="border-2 border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 text-gray-800 transition shadow-sm" name="cinPraticien" placeholder="CIN National" value={formData.cinPraticien} onChange={handleChange} required disabled={isEditing} />
-            </div>
-
+            {/* Le champ CIN n'existe plus dans la DB mais s'il doit exister en tant que donnée métier, il faudrait le réintroduire ici et l'envoyer au POST/PUT */}
+            {/* Je le retire ici pour refléter l'absence de la colonne 'cinPraticien' dans la DB */}
+            
             <div className="flex flex-col">
                 <label className="text-sm font-semibold text-gray-700 mb-1">Nom*</label>
                 <input className="border-2 border-gray-200 bg-white rounded-xl px-4 py-2.5 focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 text-gray-800 transition shadow-sm" name="nom" placeholder="Nom de famille" value={formData.nom} onChange={handleChange} required />
@@ -374,9 +384,10 @@ export default function Praticiens() {
             <thead>
               <tr className="bg-indigo-100 text-indigo-800 uppercase text-left font-bold border-b-2 border-indigo-300">
                 {/* En-têtes cliquables pour le tri */}
-                {['cinPraticien', 'nom', 'prenom', 'telephone', 'email', 'specialite'].map(field => (
+                {/* MODIFIÉ : Remplacement de cinPraticien par id dans le tri */}
+                {['id', 'nom', 'prenom', 'telephone', 'email', 'specialite'].map(field => ( 
                   <th key={field} className="px-4 py-4 cursor-pointer hover:bg-indigo-200 transition-all" onClick={() => handleSort(field)}>
-                    {field === 'cinPraticien' ? 'CIN' : (field.charAt(0).toUpperCase() + field.slice(1).replace('telephone', 'Téléphone'))} <SortIcon field={field} />
+                    {field === 'id' ? 'ID' : (field.charAt(0).toUpperCase() + field.slice(1).replace('telephone', 'Téléphone'))} <SortIcon field={field} />
                   </th>
                 ))}
                 <th className="px-4 py-4 text-center">Actions</th>
@@ -391,8 +402,9 @@ export default function Praticiens() {
                 </tr>
               ) : paginatedPraticiens.length > 0 ? (
                 paginatedPraticiens.map((p, index) => (
-                  <tr key={p.cinPraticien} className={`border-t border-gray-100 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-cyan-50/70`}>
-                    <td className="px-4 py-3 font-mono text-gray-800">{p.cinPraticien}</td>
+                  // MODIFIÉ : Utilisation de p.id comme clé
+                  <tr key={p.id} className={`border-t border-gray-100 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-cyan-50/70`}> 
+                    <td className="px-4 py-3 font-mono text-gray-800">{p.id}</td> {/* AFFICHAGE ID */}
                     <td className="px-4 py-3 font-extrabold text-gray-900">{p.nom}</td>
                     <td className="px-4 py-3">{p.prenom}</td>
                     <td className="px-4 py-3">{p.telephone || 'N/A'}</td>
@@ -404,7 +416,8 @@ export default function Praticiens() {
                       <button onClick={() => handleEdit(p)} className="flex items-center bg-amber-500 text-white px-3 py-1.5 rounded-xl hover:bg-amber-600 transition-all text-xs shadow-md">
                         <Edit2 className="w-4 h-4 mr-1" /> Modifier
                       </button>
-                      <button onClick={() => handleDelete(p.cinPraticien)} className="flex items-center bg-red-600 text-white px-3 py-1.5 rounded-xl hover:bg-red-700 transition-all text-xs shadow-md">
+                      {/* MODIFIÉ : Appel de handleDelete avec p.id */}
+                      <button onClick={() => handleDelete(p.id)} className="flex items-center bg-red-600 text-white px-3 py-1.5 rounded-xl hover:bg-red-700 transition-all text-xs shadow-md"> 
                         <Trash2 className="w-4 h-4 mr-1" /> Supprimer
                       </button>
                     </td>
@@ -444,7 +457,8 @@ export default function Praticiens() {
           <div className="text-center text-indigo-600 font-semibold py-5">Chargement des dossiers...</div>
         ) : paginatedPraticiens.length > 0 ? (
           paginatedPraticiens.map((p) => (
-            <div key={p.cinPraticien} className="bg-white p-5 rounded-xl shadow-lg border-l-4 border-indigo-500 hover:shadow-xl transition-all duration-200">
+            // MODIFIÉ : Utilisation de p.id comme clé
+            <div key={p.id} className="bg-white p-5 rounded-xl shadow-lg border-l-4 border-indigo-500 hover:shadow-xl transition-all duration-200">
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
                 <span className="font-extrabold text-xl text-gray-800">{p.nom} {p.prenom}</span>
                 <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold border border-indigo-300">{getSpecialiteLabel(p.specialite)}</span>
@@ -452,7 +466,7 @@ export default function Praticiens() {
               <div className="text-gray-600 space-y-2 text-sm">
                 <p className='flex items-center gap-2'>
                     <User className='w-4 h-4 text-indigo-500' />
-                    <strong>CIN:</strong> <span className="font-medium text-gray-800">{p.cinPraticien}</span>
+                    <strong>ID:</strong> <span className="font-medium text-gray-800">{p.id}</span> {/* AFFICHAGE ID */}
                 </p>
                 <p className='flex items-center gap-2'>
                     <Mail className='w-4 h-4 text-indigo-500' />
@@ -467,7 +481,8 @@ export default function Praticiens() {
                 <button onClick={() => handleEdit(p)} className="flex items-center bg-amber-500 text-white px-4 py-2 rounded-xl hover:bg-amber-600 transition-all text-sm shadow-md">
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button onClick={() => handleDelete(p.cinPraticien)} className="flex items-center bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all text-sm shadow-md">
+                {/* MODIFIÉ : Appel de handleDelete avec p.id */}
+                <button onClick={() => handleDelete(p.id)} className="flex items-center bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all text-sm shadow-md">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
