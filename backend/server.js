@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Connexion à PostgreSQL via Render (utilisez DATABASE_URL en env var)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://test_20zd_user:8pipGv4a9ugOzyb6vNkcGueAgItGgu0u@dpg-d4i4nnn5r7bs73c7u1c0-a.oregon-postgres.render.com/test_20zd',
+  connectionString: process.env.DATABASE_URL || 'postgresql://test_e3jx_user:0OYvY0JJU8p6QmWJr5zCzwR4i5E3YS5v@dpg-d4i53c3uibrs73dvsi6g-a.oregon-postgres.render.com/test_e3jx',
   ssl: { rejectUnauthorized: false } // Nécessaire pour Render
 });
 
@@ -319,6 +319,17 @@ app.get('/admins', async (req, res) => {
 });
 
 // Route GET : Lister tous les utilisateurs
+// app.get('/users', async (req, res) => {
+//   try {
+//     const result = await query('SELECT id, email, isApproved FROM users');
+//     res.json(result.rows);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+
+// Route GET : Lister tous les utilisateurs
 app.get('/users', async (req, res) => {
   try {
     const result = await query('SELECT id, email, isApproved FROM users');
@@ -327,6 +338,20 @@ app.get('/users', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// NOUVELLE ROUTE : Lister les utilisateurs en attente de validation (isApproved = 0)
+app.get('/users/pending', async (req, res) => {
+  try {
+    // La requête SQL filtre spécifiquement les utilisateurs dont isApproved est à 0
+    const result = await query('SELECT id, email, isApproved FROM users WHERE isApproved = 0');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erreur lors de la récupération des utilisateurs en attente:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // Route PUT : Valider un utilisateur
 app.put('/users/:id/approve', async (req, res) => {
