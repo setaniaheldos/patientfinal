@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Connexion à PostgreSQL via Render (utilisez DATABASE_URL en env var)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://test_e3jx_user:0OYvY0JJU8p6QmWJr5zCzwR4i5E3YS5v@dpg-d4i53c3uibrs73dvsi6g-a.oregon-postgres.render.com/test_e3jx',
+  connectionString: process.env.DATABASE_URL || 'postgresql://test_a089_user:9zXW2HdJEC7N3MwoAf7v5ZGCIxqDTZXD@dpg-d4i78undiees73c0lvl0-a.oregon-postgres.render.com/test_a089',
   ssl: { rejectUnauthorized: false } // Nécessaire pour Render
 });
 
@@ -39,11 +39,22 @@ async function query(sql, params = []) {
 // 🔧 Création des tables (Syntaxe PostgreSQL: SERIAL pour auto-incrément, TEXT/NUMERIC pour types)
 async function createTables() {
   try {
+    
+    // ⚠️ D'abord, tenter de supprimer l'ancienne colonne si elle existe, pour éviter les erreurs futures.
+    // Cette opération est critique car la colonne pourrait encore exister dans la base de données.
+    try {
+        await query("ALTER TABLE patients DROP COLUMN IF EXISTS cinPatient");
+        console.log('✅ Tentative de suppression de l\'ancienne colonne cinPatient réussie.');
+    } catch (alterErr) {
+        // En cas d'échec (par exemple, si la colonne est encore référencée, ce qui ne devrait pas être le cas ici)
+        console.error("⚠️ Impossible de supprimer l'ancienne colonne cinPatient:", alterErr.message);
+    }
+      
     // Table patients
     await query(`
       CREATE TABLE IF NOT EXISTS patients (
-        id SERIAL PRIMARY KEY, -- Remplacé cinPatient TEXT PRIMARY KEY par id SERIAL PRIMARY KEY pour standardiser l'auto-incrément. cinPatient devient unique.
-        cinPatient TEXT UNIQUE NOT NULL,
+        id SERIAL PRIMARY KEY,
+        -- cinPatient TEXT UNIQUE NOT NULL (SUPPRIMÉ SELON LA DEMANDE)
         prenom TEXT NOT NULL,
         nom TEXT NOT NULL,
         age INTEGER NOT NULL,
@@ -54,7 +65,7 @@ async function createTables() {
       );
     `);
 
-    // Table praticiens
+    // Table praticiens (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS praticiens (
         cinPraticien TEXT PRIMARY KEY,
@@ -66,13 +77,13 @@ async function createTables() {
       );
     `);
 
-    // Table rendezvous
+    // Table rendezvous (inchangée dans sa structure de clé)
     await query(`
       CREATE TABLE IF NOT EXISTS rendezvous (
         idRdv SERIAL PRIMARY KEY,
-        patient_id INTEGER NOT NULL, -- Remplacé cinPatient par patient_id (référence à la clé primaire patients)
+        patient_id INTEGER NOT NULL,
         cinPraticien TEXT NOT NULL,
-        dateHeure TIMESTAMP NOT NULL, -- DATETIME devient TIMESTAMP
+        dateHeure TIMESTAMP NOT NULL,
         statut TEXT DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'confirme', 'annule')),
         idRdvParent INTEGER,
         FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
@@ -81,28 +92,28 @@ async function createTables() {
       );
     `);
 
-    // Table consultations
+    // Table consultations (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS consultations (
         idConsult SERIAL PRIMARY KEY,
         idRdv INTEGER NOT NULL,
         dateConsult TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         compteRendu TEXT,
-        prix NUMERIC DEFAULT NULL, -- REAL devient NUMERIC
+        prix NUMERIC DEFAULT NULL,
         FOREIGN KEY (idRdv) REFERENCES rendezvous(idRdv) ON DELETE CASCADE
       );
     `);
 
-    // Tentative d'ajouter la colonne 'prix' si elle n'existe pas
+    // Tentative d'ajouter la colonne 'prix' si elle n'existe pas (inchangée)
     try {
       await query("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS prix NUMERIC DEFAULT NULL");
     } catch (alterErr) {
-      if (alterErr.code !== '42P07') { // 42P07 est pour 'duplicate_table' (non pertinent ici, mais la gestion d'erreur change)
+      if (alterErr.code !== '42P07') {
         console.error("ℹ️ Impossible d'ajouter la colonne 'prix'");
       }
     }
 
-    // Table prescriptions
+    // Table prescriptions (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS prescriptions (
         idPrescrire SERIAL PRIMARY KEY,
@@ -114,7 +125,7 @@ async function createTables() {
       );
     `);
 
-    // Table des admins
+    // Table des admins (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS admins (
         id SERIAL PRIMARY KEY,
@@ -123,17 +134,17 @@ async function createTables() {
       );
     `);
 
-    // Table des utilisateurs
+    // Table des utilisateurs (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        isApproved INTEGER DEFAULT 0 -- 0 = non validé, 1 = validé par l'admin
+        isApproved INTEGER DEFAULT 0
       );
     `);
 
-    // Table des examens
+    // Table des examens (inchangée)
     await query(`
       CREATE TABLE IF NOT EXISTS examens (
         idExamen SERIAL PRIMARY KEY,
@@ -177,16 +188,31 @@ app.get('/patients', async (req, res) => {
   }
 });
 
+// Route GET : Obtenir un patient par ID (NOUVELLE ROUTE)
+app.get('/patients/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await query('SELECT * FROM patients WHERE id = $1', [id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: "Patient non trouvé" });
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 // Route POST : Ajouter un patient
 app.post('/patients', async (req, res) => {
   try {
-    const { cinPatient, prenom, nom, age, adresse, email, sexe, telephone } = req.body;
+    // Suppression de cinPatient dans le destructuring
+    const { prenom, nom, age, adresse, email, sexe, telephone } = req.body; 
     const sql = `
-      INSERT INTO patients (cinPatient, prenom, nom, age, adresse, email, sexe, telephone) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      INSERT INTO patients (prenom, nom, age, adresse, email, sexe, telephone) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7) 
       RETURNING id
     `;
-    const result = await query(sql, [cinPatient, prenom, nom, age, adresse, email, sexe, telephone]);
+    // Suppression de cinPatient dans les paramètres
+    const result = await query(sql, [prenom, nom, age, adresse, email, sexe, telephone]); 
     // RETURNING id donne l'ID auto-généré
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
@@ -194,18 +220,20 @@ app.post('/patients', async (req, res) => {
   }
 });
 
-// Route PUT : Modifier un patient par CIN (on va utiliser CIN car c'était votre clé dans SQLite)
-app.put('/patients/:cinPatient', async (req, res) => {
+// Route PUT : Modifier un patient par ID (Anciennement par CIN)
+app.put('/patients/:id', async (req, res) => {
   try {
     const { prenom, nom, age, adresse, email, sexe, telephone } = req.body;
-    const { cinPatient } = req.params;
+    // Changement du paramètre :cinPatient en :id
+    const { id } = req.params; 
     const sql = `
       UPDATE patients 
       SET prenom=$1, nom=$2, age=$3, adresse=$4, email=$5, sexe=$6, telephone=$7 
-      WHERE cinPatient=$8 
+      WHERE id=$8 
       RETURNING *
     `;
-    const result = await query(sql, [prenom, nom, age, adresse, email, sexe, telephone, cinPatient]);
+    // Changement de la position des paramètres (l'ID est le dernier)
+    const result = await query(sql, [prenom, nom, age, adresse, email, sexe, telephone, id]); 
     if (result.rowCount === 0) return res.status(404).json({ error: "Patient non trouvé" });
     res.json({ modified: result.rowCount });
   } catch (err) {
@@ -213,10 +241,11 @@ app.put('/patients/:cinPatient', async (req, res) => {
   }
 });
 
-// Route DELETE : Supprimer un patient par CIN
-app.delete('/patients/:cinPatient', async (req, res) => {
+// Route DELETE : Supprimer un patient par ID (Anciennement par CIN)
+app.delete('/patients/:id', async (req, res) => {
   try {
-    const result = await query(`DELETE FROM patients WHERE cinPatient=$1`, [req.params.cinPatient]);
+    // Changement de req.params.cinPatient en req.params.id
+    const result = await query(`DELETE FROM patients WHERE id=$1`, [req.params.id]); 
     if (result.rowCount === 0) return res.status(404).json({ error: "Patient non trouvé" });
     res.json({ deleted: result.rowCount });
   } catch (err) {
@@ -224,7 +253,7 @@ app.delete('/patients/:cinPatient', async (req, res) => {
   }
 });
 
-// --- 3. ROUTES AUTHENTIFICATION/ADMINS/USERS ---
+// --- 3. ROUTES AUTHENTIFICATION/ADMINS/USERS (INCHANGÉES) ---
 
 // Route POST : Inscription utilisateur
 app.post('/register', async (req, res) => {
@@ -319,17 +348,6 @@ app.get('/admins', async (req, res) => {
 });
 
 // Route GET : Lister tous les utilisateurs
-// app.get('/users', async (req, res) => {
-//   try {
-//     const result = await query('SELECT id, email, isApproved FROM users');
-//     res.json(result.rows);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
-
-// Route GET : Lister tous les utilisateurs
 app.get('/users', async (req, res) => {
   try {
     const result = await query('SELECT id, email, isApproved FROM users');
@@ -350,7 +368,6 @@ app.get('/users/pending', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 // Route PUT : Valider un utilisateur
@@ -389,7 +406,7 @@ app.delete('/users/:id', async (req, res) => {
   }
 });
 
-// --- 4. ROUTES PRATICIENS ---
+// --- 4. ROUTES PRATICIENS (INCHANGÉES) ---
 
 // Route GET : Lister tous les praticiens
 app.get('/praticiens', async (req, res) => {
@@ -438,7 +455,7 @@ app.delete('/praticiens/:cinPraticien', async (req, res) => {
   }
 });
 
-// --- 5. ROUTES RENDEZ-VOUS ---
+// --- 5. ROUTES RENDEZ-VOUS (INCHANGÉES) ---
 
 // Route GET : Tous les rendez-vous
 app.get('/rendezvous', async (req, res) => {
@@ -529,7 +546,7 @@ app.delete('/rendezvous/:idRdv', async (req, res) => {
   }
 });
 
-// --- 6. ROUTES CONSULTATIONS ---
+// --- 6. ROUTES CONSULTATIONS (INCHANGÉES) ---
 
 // Route GET : Lister toutes les consultations
 app.get('/consultations', async (req, res) => {
@@ -629,7 +646,7 @@ app.get('/consultations/search', async (req, res) => {
   }
 });
 
-// --- 7. ROUTES PRESCRIPTIONS ---
+// --- 7. ROUTES PRESCRIPTIONS (INCHANGÉES) ---
 
 // Route GET : Lister toutes les prescriptions
 app.get('/prescriptions', async (req, res) => {
@@ -678,9 +695,7 @@ app.delete('/prescriptions/:idPrescrire', async (req, res) => {
   }
 });
 
-// --- 8. ROUTES EXAMENS ---
-
-// Note: J'ai corrigé le nom de la table de 'examen' à 'examens' dans la création et les routes pour la cohérence.
+// --- 8. ROUTES EXAMENS (INCHANGÉES) ---
 
 // Route GET : Lister tous les examens
 app.get('/examens', async (req, res) => {

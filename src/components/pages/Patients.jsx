@@ -8,10 +8,11 @@ const actionButtonClasses = "flex items-center justify-center p-3 rounded-full s
 export default function Patients() {
   const [patients, setPatients] = useState([]);
   const [formData, setFormData] = useState({
-    cinPatient: '',
+    // MODIFIÉ : cinPatient est retiré, id est ajouté pour l'édition
+    id: null, 
     prenom: '',
     nom: '',
-    age: '', // Gardé comme chaîne pour la gestion de l'input
+    age: '',
     adresse: '',
     email: '',
     sexe: 'Homme',
@@ -91,65 +92,53 @@ export default function Patients() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const url = `https://mon-api-rmv3.onrender.com/patients${isEditing ? '/' + formData.cinPatient : ''}`;
+    
+    // MODIFIÉ : L'URL utilise l'ID pour le PUT (modification)
+    const url = `https://mon-api-rmv3.onrender.com/patients${isEditing ? '/' + formData.id : ''}`;
     const method = isEditing ? 'put' : 'post';
     const ageNum = Number(formData.age);
 
-    // --- Validation Client-Side (CORRIGÉE) ---
+    // --- Validation Client-Side ---
     if (isNaN(ageNum) || ageNum < 0 || ageNum > 120) {
         handleError("L'âge doit être un nombre valide entre 0 et 120.");
         return;
     }
     
-    // Le CIN est requis seulement pour l'ajout
-    if (!isEditing) {
-        if (!formData.cinPatient) {
-            handleError("Le CIN est requis pour l'ajout d'un nouveau patient.");
-            return;
-        }
-        // Nouvelle contrainte : CIN maximum 14 caractères à la création
-        if (formData.cinPatient.length > 14) {
-            handleError("Le CIN ne doit pas dépasser 14 caractères.");
-            return;
-        }
-        // Vérification de l'existence du Nom (requis)
-        if (!formData.nom) {
-             handleError("Le Nom de famille est requis.");
-            return;
-        }
+    // Le Nom est requis dans tous les cas
+    if (!formData.nom) {
+        handleError("Le Nom de famille est requis.");
+        return;
     }
     
-    // Préparation des données: L'âge doit être un nombre, le prénom peut être vide
+    // Préparation des données (ID n'est pas envoyé lors de l'ajout)
     const dataToSend = { 
+        // MODIFIÉ : L'ID est retiré pour l'ajout (POST), mais pas pour la modification (PUT) si l'ID est dans l'URL
         ...formData, 
         age: ageNum, 
-        prenom: formData.prenom || '', // Assure qu'une chaîne vide est envoyée si le champ est vide
-        // On n'envoie que les champs qui sont pertinents
-        cinPatient: formData.cinPatient,
-        nom: formData.nom,
-        adresse: formData.adresse,
-        email: formData.email,
-        sexe: formData.sexe,
-        telephone: formData.telephone,
+        prenom: formData.prenom || '',
     };
+    if (dataToSend.id) {
+        delete dataToSend.id; // L'ID ne doit pas être envoyé dans le corps de la requête PUT/POST
+    }
     // --- Fin Validation Client-Side ---
 
     axios[method](url, dataToSend)
       .then(() => {
         fetchPatients();
-        setFormData({ cinPatient: '', prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' });
+        // MODIFIÉ : Réinitialisation du formulaire sans cinPatient
+        setFormData({ id: null, prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' });
         setIsEditing(false);
         setShowForm(false);
         handleSuccess(isEditing ? "Dossier patient mis à jour." : "Nouveau patient enregistré.");
       })
       .catch((err) => {
-        const errorMsg = err.response?.data?.message || `Erreur lors de l'opération. Vérifiez le CIN et les champs obligatoires.`;
+        const errorMsg = err.response?.data?.error || `Erreur lors de l'opération. Vérifiez les champs obligatoires.`;
         handleError(errorMsg);
       });
   };
 
   const handleEdit = (patient) => {
-    // S'assurer que 'age' est une chaîne pour le champ input type="number"
+    // MODIFIÉ : L'ID est stocké dans le formData
     const patientClone = { ...patient, age: String(patient.age) };
     setFormData(patientClone);
     setIsEditing(true);
@@ -157,7 +146,8 @@ export default function Patients() {
   };
 
   const handleAdd = () => {
-    setFormData({ cinPatient: '', prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' });
+    // MODIFIÉ : Réinitialisation du formulaire sans cinPatient
+    setFormData({ id: null, prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' });
     setIsEditing(false);
     setShowForm(true);
   };
@@ -165,13 +155,14 @@ export default function Patients() {
   const handleCancel = () => {
     setShowForm(false);
     setIsEditing(false);
-    // age est réinitialisé à une chaîne vide
-    setFormData({ cinPatient: '', prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' }); 
+    // MODIFIÉ : Réinitialisation du formulaire sans cinPatient
+    setFormData({ id: null, prenom: '', nom: '', age: '', adresse: '', email: '', sexe: 'Homme', telephone: '' }); 
   };
 
-  const handleDelete = (cin) => {
+  const handleDelete = (id) => {
+    // MODIFIÉ : Utilise l'ID pour la suppression
     if (window.confirm("CONFIRMATION : Voulez-vous vraiment supprimer définitivement ce dossier patient ?")) {
-      axios.delete(`https://mon-api-rmv3.onrender.com/patients/${cin}`)
+      axios.delete(`https://mon-api-rmv3.onrender.com/patients/${id}`)
         .then(() => {
           fetchPatients();
           handleSuccess("Dossier patient supprimé.");
@@ -214,8 +205,9 @@ export default function Patients() {
   const paginatedPatients = filteredPatients.slice((page - 1) * perPage, page * perPage);
 
   // --- Export Functions ---
-  const getExportData = () => filteredPatients.map(({ cinPatient, nom, prenom, sexe, age, adresse, email, telephone }) => ({
-    CIN: cinPatient,
+  const getExportData = () => filteredPatients.map(({ id, nom, prenom, sexe, age, adresse, email, telephone }) => ({
+    // MODIFIÉ : Remplacement de CIN par ID pour l'export
+    ID: id,
     Nom: nom,
     Prénom: prenom,
     Sexe: sexe,
@@ -242,12 +234,13 @@ export default function Patients() {
         doc.setTextColor(6, 78, 59);
         doc.text(`Rapport Patient MedTech - ${date}`, 14, 15);
 
-        const tableColumn = ["CIN", "Nom", "Prénom", "Sexe", "Âge", "Adresse", "Email", "Téléphone"];
+        // MODIFIÉ : Remplacement de "CIN" par "ID" dans l'en-tête du tableau
+        const tableColumn = ["ID", "Nom", "Prénom", "Sexe", "Âge", "Adresse", "Email", "Téléphone"];
         const tableRows = [];
 
         filteredPatients.forEach(patient => {
             tableRows.push([
-                patient.cinPatient,
+                patient.id, // MODIFIÉ : Utilise patient.id
                 patient.nom,
                 patient.prenom,
                 patient.sexe,
@@ -300,6 +293,22 @@ export default function Patients() {
     return sortOrder === 'asc' 
       ? <ChevronUp className="w-4 h-4 inline-block ml-1 text-emerald-400" /> 
       : <ChevronDown className="w-4 h-4 inline-block ml-1 text-emerald-400" />;
+  };
+
+  // MODIFIÉ : Remplacement de 'cinPatient' par 'id' dans la liste des champs
+  const tableFields = ['id', 'nom', 'prenom', 'sexe', 'age', 'adresse', 'email', 'telephone'];
+  const getHeaderLabel = (field) => {
+      switch(field) {
+          case 'id': return 'ID'; // MODIFIÉ
+          case 'nom': return 'Nom';
+          case 'prenom': return 'Prénom';
+          case 'sexe': return 'Sexe';
+          case 'age': return 'Âge';
+          case 'adresse': return 'Adresse';
+          case 'email': return 'Email';
+          case 'telephone': return 'Téléphone';
+          default: return field;
+      }
   };
 
   return (
@@ -407,23 +416,22 @@ export default function Patients() {
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl text-gray-900 shadow-2xl mb-8 space-y-6 border border-cyan-200">
           <h3 className="text-2xl font-bold text-cyan-700 flex items-center gap-2">
             {isEditing ? <Edit2 className='w-6 h-6' /> : <PlusCircle className='w-6 h-6' />}
-            {isEditing ? 'Modification du Dossier' : 'Enregistrement Patient'}
+            {isEditing ? `Modification du Dossier (ID: ${formData.id})` : 'Enregistrement Patient'}
           </h3>
-          <p className='text-sm text-gray-500'>* Champs obligatoires (CIN, Nom, Âge, Sexe)</p>
+          {/* Mise à jour des champs requis */}
+          <p className='text-sm text-gray-500'>* Champs obligatoires (Nom, Âge, Sexe)</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             
             {/* Ligne 1 */}
             <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center"><User className='w-4 h-4 mr-1 text-blue-500' /> CIN*</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center"><User className='w-4 h-4 mr-1 text-blue-500' /> ID</label>
+                {/* MODIFIÉ : Affichage de l'ID, non modifiable, non requis */}
                 <input 
-                    className="border-2 border-gray-200 rounded-xl px-4 py-2.5 focus:ring-4 focus:ring-cyan-200 focus:border-cyan-500 transition shadow-sm bg-gray-50" 
-                    name="cinPatient" 
-                    placeholder="CIN National" 
-                    value={formData.cinPatient} 
-                    onChange={handleChange} 
-                    required={!isEditing} // Requis SEULEMENT pour l'ajout
-                    disabled={isEditing} 
-                    maxLength="14" // Ajout de la limite visuelle
+                    className='bg-gray-100 border-gray-300 border-2 rounded-xl px-4 py-2.5 shadow-sm text-gray-500'
+                    name="id" 
+                    placeholder="Auto-généré" 
+                    value={formData.id || ''} 
+                    disabled={true} 
                 />
             </div>
             <div className="flex flex-col">
@@ -434,7 +442,6 @@ export default function Patients() {
                     placeholder="Prénom" 
                     value={formData.prenom} 
                     onChange={handleChange} 
-                    // 'required' retiré comme demandé
                 />
             </div>
             <div className="flex flex-col">
@@ -445,7 +452,7 @@ export default function Patients() {
                     placeholder="Nom de famille" 
                     value={formData.nom} 
                     onChange={handleChange} 
-                    required // Reste requis
+                    required 
                 />
             </div>
             <div className="flex flex-col">
@@ -502,9 +509,10 @@ export default function Patients() {
           <table className="min-w-full w-full text-sm">
             <thead>
               <tr className="bg-emerald-100 text-emerald-800 uppercase text-left font-bold border-b-2 border-emerald-300">
-                {['cinPatient', 'nom', 'prenom', 'sexe', 'age', 'adresse', 'email', 'telephone'].map(field => (
+                {/* Affichage des en-têtes de colonne */}
+                {tableFields.map(field => (
                   <th key={field} className="px-4 py-4 cursor-pointer hover:bg-emerald-200 transition-all" onClick={() => handleSort(field)}>
-                    {field === 'cinPatient' ? 'CIN' : (field.charAt(0).toUpperCase() + field.slice(1))} <SortIcon field={field} />
+                    {getHeaderLabel(field)} <SortIcon field={field} />
                   </th>
                 ))}
                 <th className="px-4 py-4 text-center">Actions</th>
@@ -513,14 +521,16 @@ export default function Patients() {
             <tbody className="text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-cyan-600 font-semibold text-lg flex items-center justify-center gap-3">
+                  <td colSpan={tableFields.length + 1} className="text-center py-8 text-cyan-600 font-semibold text-lg flex items-center justify-center gap-3">
                     <Clock className="w-6 h-6 animate-spin" /> Chargement des dossiers médicaux...
                   </td>
                 </tr>
               ) : paginatedPatients.length > 0 ? (
                 paginatedPatients.map((p, index) => (
-                  <tr key={p.cinPatient} className={`border-t border-gray-100 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-emerald-50'} hover:bg-cyan-50/70`}>
-                    <td className="px-4 py-3 font-mono text-gray-800">{p.cinPatient}</td>
+                  // MODIFIÉ : La clé utilise p.id
+                  <tr key={p.id} className={`border-t border-gray-100 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-emerald-50'} hover:bg-cyan-50/70`}>
+                    {/* Affichage des données, y compris l'ID */}
+                    <td className="px-4 py-3 font-mono text-gray-800">{p.id}</td>
                     <td className="px-4 py-3 font-extrabold text-gray-900">{p.nom}</td>
                     <td className="px-4 py-3">{p.prenom}</td>
                     <td className="px-4 py-3 font-semibold text-xs">{p.sexe}</td>
@@ -532,7 +542,8 @@ export default function Patients() {
                       <button onClick={() => handleEdit(p)} className="flex items-center bg-amber-500 text-white px-3 py-1.5 rounded-xl hover:bg-amber-600 transition-all text-xs shadow-md">
                         <Edit2 className="w-4 h-4 mr-1" /> Modifier
                       </button>
-                      <button onClick={() => handleDelete(p.cinPatient)} className="flex items-center bg-red-600 text-white px-3 py-1.5 rounded-xl hover:bg-red-700 transition-all text-xs shadow-md">
+                      {/* MODIFIÉ : Utilise p.id pour la suppression */}
+                      <button onClick={() => handleDelete(p.id)} className="flex items-center bg-red-600 text-white px-3 py-1.5 rounded-xl hover:bg-red-700 transition-all text-xs shadow-md">
                         <Trash2 className="w-4 h-4 mr-1" /> Supprimer
                       </button>
                     </td>
@@ -540,7 +551,7 @@ export default function Patients() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-500 font-medium text-lg">
+                  <td colSpan={tableFields.length + 1} className="text-center py-8 text-gray-500 font-medium text-lg">
                     <X className="w-6 h-6 inline-block mr-2 text-red-500" /> Aucun patient ne correspond aux critères de recherche.
                   </td>
                 </tr>
@@ -571,7 +582,8 @@ export default function Patients() {
           <div className="text-center text-cyan-600 font-semibold py-5">Chargement des dossiers...</div>
         ) : paginatedPatients.length > 0 ? (
           paginatedPatients.map((p) => (
-            <div key={p.cinPatient} className="bg-white p-5 rounded-xl shadow-lg border-l-4 border-emerald-500 hover:shadow-xl transition-all duration-200">
+            // MODIFIÉ : La clé utilise p.id
+            <div key={p.id} className="bg-white p-5 rounded-xl shadow-lg border-l-4 border-emerald-500 hover:shadow-xl transition-all duration-200">
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
                 <span className="font-extrabold text-xl text-gray-800">{p.nom} {p.prenom}</span>
                 <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-300">{p.sexe}, {p.age} ans</span>
@@ -579,7 +591,8 @@ export default function Patients() {
               <div className="text-gray-600 space-y-2 text-sm">
                 <p className='flex items-center gap-2'>
                     <User className='w-4 h-4 text-cyan-500' />
-                    <strong>CIN:</strong> <span className="font-medium text-gray-800">{p.cinPatient}</span>
+                    {/* MODIFIÉ : Affiche l'ID */}
+                    <strong>ID:</strong> <span className="font-medium text-gray-800">{p.id}</span>
                 </p>
                 <p className='flex items-center gap-2'>
                     <Mail className='w-4 h-4 text-cyan-500' />
@@ -598,7 +611,8 @@ export default function Patients() {
                 <button onClick={() => handleEdit(p)} className="flex items-center bg-amber-500 text-white px-4 py-2 rounded-xl hover:bg-amber-600 transition-all text-sm shadow-md">
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button onClick={() => handleDelete(p.cinPatient)} className="flex items-center bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all text-sm shadow-md">
+                {/* MODIFIÉ : Utilise p.id pour la suppression */}
+                <button onClick={() => handleDelete(p.id)} className="flex items-center bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all text-sm shadow-md">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
